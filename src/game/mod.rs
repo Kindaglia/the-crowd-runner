@@ -394,23 +394,23 @@ fn spawn_level(commands: &mut Commands, meshes: &MeshAssets, materials: &Materia
         Vec3::new(1.8, 0.0, 24.0),
         GateKind::Multiply(2),
     );
-    spawn_obstacle(commands, meshes, materials, Vec3::new(0.0, 0.0, 34.0), 6);
-    spawn_enemy_group(commands, meshes, materials, Vec3::new(0.0, 0.0, 44.0), 16);
+    spawn_obstacle(commands, meshes, materials, Vec3::new(0.0, 0.0, 40.0), 6);
+    spawn_enemy_group(commands, meshes, materials, Vec3::new(0.0, 0.0, 52.0), 16);
     spawn_gate(
         commands,
         meshes,
         materials,
-        Vec3::new(-2.0, 0.0, 56.0),
+        Vec3::new(-2.0, 0.0, 64.0),
         GateKind::Add(20),
     );
     spawn_gate(
         commands,
         meshes,
         materials,
-        Vec3::new(2.0, 0.0, 56.0),
+        Vec3::new(2.0, 0.0, 64.0),
         GateKind::Add(-10),
     );
-    spawn_obstacle(commands, meshes, materials, Vec3::new(1.5, 0.0, 64.0), 8);
+    spawn_obstacle(commands, meshes, materials, Vec3::new(1.5, 0.0, 72.0), 8);
     spawn_enemy_group(commands, meshes, materials, Vec3::new(0.0, 0.0, 76.0), 28);
     spawn_finish_line(commands, meshes, materials, Vec3::new(0.0, 0.0, 82.0));
     spawn_boss(commands, meshes, materials, Vec3::new(0.0, 0.0, 86.0), 40);
@@ -723,7 +723,7 @@ fn spawn_boss(
     count: i32,
 ) {
     let mesh = meshes.stickman.clone();
-    let required = ((count as f32) * 0.4).ceil() as i32;
+    let required = count;
 
     let boss = commands
         .spawn((
@@ -952,6 +952,7 @@ fn handle_collisions(
     mut player_query: Query<(&Transform, &mut CrowdCount), With<Player>>,
     mut gate_query: Query<(Entity, &Transform, &Gate)>,
     mut obstacle_query: Query<(Entity, &Transform, &Obstacle)>,
+    finish_query: Query<(Entity, &Transform), With<FinishLine>>,
     mut enemy_query: Query<(
         Entity,
         &Transform,
@@ -990,6 +991,31 @@ fn handle_collisions(
             crowd.current -= obstacle.damage;
             commands.entity(entity).despawn_recursive();
             break;
+        }
+    }
+
+    for (entity, transform) in finish_query.iter() {
+        if (player_pos.z - transform.translation.z).abs() < COLLISION_RANGE
+            && (player_pos.x - transform.translation.x).abs() < TRACK_WIDTH * 0.5
+        {
+            let boss_required = {
+                let mut required = 0;
+                for (_, _, _, _, boss) in enemy_query.iter_mut() {
+                    if let Some(boss) = boss {
+                        required = required.max(boss.required);
+                    }
+                }
+                required
+            };
+            let win = crowd.current >= boss_required;
+            game_state.running = false;
+            game_state.outcome = Some(if win {
+                GameOutcome::Win
+            } else {
+                GameOutcome::Lose
+            });
+            commands.entity(entity).despawn_recursive();
+            return;
         }
     }
 
