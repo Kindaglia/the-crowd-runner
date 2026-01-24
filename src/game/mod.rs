@@ -1,3 +1,5 @@
+mod levels;
+
 use bevy::asset::AssetPlugin;
 use bevy::audio::AudioPlugin;
 use bevy::input::touch::{TouchInput, TouchPhase};
@@ -15,6 +17,8 @@ const DIGIT_HEIGHT: f32 = 1.1;
 const DIGIT_DEPTH: f32 = 0.12;
 const DIGIT_GAP: f32 = 0.15;
 const SYMBOL_GAP: f32 = 0.25;
+const LEVEL_COUNT: usize = 3;
+const LEVEL_NAMES: [&str; LEVEL_COUNT] = ["Level 1", "Level 2", "Level 3"];
 
 #[derive(Resource, Clone)]
 struct MeshAssets {
@@ -56,11 +60,70 @@ struct InputAxis {
     value: f32,
 }
 
+#[derive(States, Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
+enum AppScreen {
+    #[default]
+    MainMenu,
+    LevelSelect,
+    Settings,
+    Playing,
+}
+
+#[derive(Resource, Clone)]
+struct LevelProgress {
+    completed: [bool; LEVEL_COUNT],
+}
+
+impl Default for LevelProgress {
+    fn default() -> Self {
+        Self {
+            completed: [false; LEVEL_COUNT],
+        }
+    }
+}
+
+#[derive(Resource, Clone, Copy)]
+struct CurrentLevel {
+    index: usize,
+}
+
 #[derive(Resource)]
 struct GameState {
     running: bool,
     outcome: Option<GameOutcome>,
 }
+
+#[derive(Component)]
+struct MainMenuRoot;
+
+#[derive(Component)]
+struct LevelSelectRoot;
+
+#[derive(Component)]
+struct SettingsRoot;
+
+#[derive(Component)]
+struct GameplayUiRoot;
+
+#[derive(Component)]
+struct MenuPlayButton;
+
+#[derive(Component)]
+struct MenuSettingsButton;
+
+#[derive(Component)]
+struct MenuQuitButton;
+
+#[derive(Component)]
+struct BackToMenuButton;
+
+#[derive(Component)]
+struct LevelButton {
+    index: usize,
+}
+
+#[derive(Component)]
+struct LevelLabel;
 
 #[derive(Component)]
 struct Player;
@@ -121,7 +184,10 @@ struct FinishLine;
 struct RestartButton;
 
 #[derive(Component)]
-struct QuitButton;
+struct EndScreenNextButton;
+
+#[derive(Component)]
+struct EndScreenMenuButton;
 
 #[derive(Component)]
 struct EndScreenRoot;
@@ -131,7 +197,8 @@ struct EndScreenUi {
     root: Entity,
     label: Entity,
     restart_button: Entity,
-    quit_button: Entity,
+    next_button: Option<Entity>,
+    menu_button: Entity,
 }
 
 #[derive(Clone, Copy)]
@@ -169,10 +236,13 @@ pub fn run() {
         })
         .init_resource::<SwipeState>()
         .init_resource::<InputAxis>()
+        .init_state::<AppScreen>()
         .insert_resource(GameState {
-            running: true,
+            running: false,
             outcome: None,
         })
+        .insert_resource(LevelProgress::default())
+        .insert_resource(CurrentLevel { index: 0 })
         .add_plugins(
             DefaultPlugins
                 .build()
@@ -191,7 +261,31 @@ pub fn run() {
                     ..default()
                 }),
         )
-        .add_systems(Startup, (setup_scene, setup_ui).chain())
+        .add_systems(Startup, (setup_assets, setup_ui_camera).chain())
+        .add_systems(OnEnter(AppScreen::MainMenu), setup_main_menu)
+        .add_systems(OnExit(AppScreen::MainMenu), cleanup_main_menu)
+        .add_systems(OnEnter(AppScreen::LevelSelect), setup_level_select)
+        .add_systems(OnExit(AppScreen::LevelSelect), cleanup_level_select)
+        .add_systems(OnEnter(AppScreen::Settings), setup_settings)
+        .add_systems(OnExit(AppScreen::Settings), cleanup_settings)
+        .add_systems(OnEnter(AppScreen::Playing), setup_playing)
+        .add_systems(OnExit(AppScreen::Playing), cleanup_playing)
+        .add_systems(
+            Update,
+            handle_main_menu_buttons.run_if(in_state(AppScreen::MainMenu)),
+        )
+        .add_systems(
+            Update,
+            handle_level_select_buttons.run_if(in_state(AppScreen::LevelSelect)),
+        )
+        .add_systems(
+            Update,
+            handle_back_to_menu.run_if(in_state(AppScreen::LevelSelect)),
+        )
+        .add_systems(
+            Update,
+            handle_back_to_menu.run_if(in_state(AppScreen::Settings)),
+        )
         .add_systems(
             Update,
             (
@@ -201,7 +295,9 @@ pub fn run() {
                 handle_collisions,
                 update_end_screen_ui,
                 handle_ui_restart,
-                handle_ui_quit,
+                handle_ui_next_level,
+                handle_ui_back_to_menu,
+                update_level_label,
                 sync_displays,
                 refresh_player_formation,
                 refresh_enemy_formation,
@@ -209,12 +305,13 @@ pub fn run() {
                 handle_restart,
                 handle_keyboard_quit,
             )
-                .chain(),
+                .chain()
+                .run_if(in_state(AppScreen::Playing)),
         )
         .run();
 }
 
-fn setup_scene(
+fn setup_assets(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -244,8 +341,6 @@ fn setup_scene(
         finish_dark: materials.add(Color::rgb(0.12, 0.12, 0.12)),
     };
 
-    spawn_level(&mut commands, &mesh_assets, &material_assets);
-
     commands.insert_resource(mesh_assets);
     commands.insert_resource(material_assets);
     commands.insert_resource(UiAssets {
@@ -253,7 +348,7 @@ fn setup_scene(
     });
 }
 
-fn setup_ui(mut commands: Commands, ui_assets: Res<UiAssets>) {
+fn setup_ui_camera(mut commands: Commands) {
     commands.spawn(Camera2dBundle {
         camera: Camera {
             order: 1,
@@ -261,6 +356,360 @@ fn setup_ui(mut commands: Commands, ui_assets: Res<UiAssets>) {
         },
         ..default()
     });
+}
+
+fn setup_main_menu(mut commands: Commands, ui_assets: Res<UiAssets>) {
+    let root = commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(18.0),
+                    ..default()
+                },
+                background_color: Color::rgb(0.06, 0.07, 0.1).into(),
+                ..default()
+            },
+            MainMenuRoot,
+        ))
+        .id();
+
+    commands.entity(root).with_children(|parent| {
+        parent.spawn(TextBundle::from_section(
+            "The Crowd Runner",
+            TextStyle {
+                font: ui_assets.font.clone(),
+                font_size: 44.0,
+                color: Color::rgb(0.95, 0.96, 1.0),
+            },
+        ));
+        parent.spawn(TextBundle::from_section(
+            "Main Menu",
+            TextStyle {
+                font: ui_assets.font.clone(),
+                font_size: 20.0,
+                color: Color::rgb(0.7, 0.72, 0.78),
+            },
+        ));
+
+        let (normal, _, _) = menu_button_colors();
+        parent
+            .spawn((
+                ButtonBundle {
+                    style: Style {
+                        width: Val::Px(220.0),
+                        height: Val::Px(56.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    background_color: normal.into(),
+                    ..default()
+                },
+                MenuPlayButton,
+            ))
+            .with_children(|button| {
+                button.spawn(TextBundle::from_section(
+                    "Play",
+                    TextStyle {
+                        font: ui_assets.font.clone(),
+                        font_size: 28.0,
+                        color: Color::rgb(0.95, 0.95, 0.95),
+                    },
+                ));
+            });
+        parent
+            .spawn((
+                ButtonBundle {
+                    style: Style {
+                        width: Val::Px(220.0),
+                        height: Val::Px(56.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    background_color: normal.into(),
+                    ..default()
+                },
+                MenuSettingsButton,
+            ))
+            .with_children(|button| {
+                button.spawn(TextBundle::from_section(
+                    "Settings",
+                    TextStyle {
+                        font: ui_assets.font.clone(),
+                        font_size: 28.0,
+                        color: Color::rgb(0.95, 0.95, 0.95),
+                    },
+                ));
+            });
+        parent
+            .spawn((
+                ButtonBundle {
+                    style: Style {
+                        width: Val::Px(220.0),
+                        height: Val::Px(56.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::rgb(0.75, 0.2, 0.2).into(),
+                    ..default()
+                },
+                MenuQuitButton,
+            ))
+            .with_children(|button| {
+                button.spawn(TextBundle::from_section(
+                    "Quit",
+                    TextStyle {
+                        font: ui_assets.font.clone(),
+                        font_size: 28.0,
+                        color: Color::rgb(0.95, 0.95, 0.95),
+                    },
+                ));
+            });
+    });
+}
+
+fn cleanup_main_menu(mut commands: Commands, query: Query<Entity, With<MainMenuRoot>>) {
+    cleanup_screen(&mut commands, &query);
+}
+
+fn setup_level_select(
+    mut commands: Commands,
+    ui_assets: Res<UiAssets>,
+    progress: Res<LevelProgress>,
+) {
+    let root = commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(20.0),
+                    ..default()
+                },
+                background_color: Color::rgb(0.05, 0.06, 0.09).into(),
+                ..default()
+            },
+            LevelSelectRoot,
+        ))
+        .id();
+
+    commands.entity(root).with_children(|parent| {
+        parent.spawn(TextBundle::from_section(
+            "Select Level",
+            TextStyle {
+                font: ui_assets.font.clone(),
+                font_size: 36.0,
+                color: Color::rgb(0.95, 0.96, 1.0),
+            },
+        ));
+
+        parent
+            .spawn(NodeBundle {
+                style: Style {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(16.0),
+                    ..default()
+                },
+                ..default()
+            })
+            .with_children(|row| {
+                for index in 0..LEVEL_COUNT {
+                    let completed = progress.completed[index];
+                    let (normal, _, _) = level_button_colors(completed);
+                    row.spawn((
+                        ButtonBundle {
+                            style: Style {
+                                width: Val::Px(140.0),
+                                height: Val::Px(54.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            background_color: normal.into(),
+                            ..default()
+                        },
+                        LevelButton { index },
+                    ))
+                    .with_children(|button| {
+                        button.spawn(TextBundle::from_section(
+                            LEVEL_NAMES[index],
+                            TextStyle {
+                                font: ui_assets.font.clone(),
+                                font_size: 20.0,
+                                color: Color::rgb(0.97, 0.98, 1.0),
+                            },
+                        ));
+                    });
+                }
+            });
+
+        let (normal, _, _) = menu_button_colors();
+        parent
+            .spawn((
+                ButtonBundle {
+                    style: Style {
+                        width: Val::Px(180.0),
+                        height: Val::Px(48.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    background_color: normal.into(),
+                    ..default()
+                },
+                BackToMenuButton,
+            ))
+            .with_children(|button| {
+                button.spawn(TextBundle::from_section(
+                    "Back",
+                    TextStyle {
+                        font: ui_assets.font.clone(),
+                        font_size: 22.0,
+                        color: Color::rgb(0.95, 0.95, 0.95),
+                    },
+                ));
+            });
+    });
+}
+
+fn cleanup_level_select(mut commands: Commands, query: Query<Entity, With<LevelSelectRoot>>) {
+    cleanup_screen(&mut commands, &query);
+}
+
+fn setup_settings(mut commands: Commands, ui_assets: Res<UiAssets>) {
+    let root = commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(16.0),
+                    ..default()
+                },
+                background_color: Color::rgb(0.05, 0.06, 0.09).into(),
+                ..default()
+            },
+            SettingsRoot,
+        ))
+        .id();
+
+    commands.entity(root).with_children(|parent| {
+        parent.spawn(TextBundle::from_section(
+            "Settings",
+            TextStyle {
+                font: ui_assets.font.clone(),
+                font_size: 36.0,
+                color: Color::rgb(0.95, 0.96, 1.0),
+            },
+        ));
+        parent.spawn(TextBundle::from_section(
+            "Coming soon",
+            TextStyle {
+                font: ui_assets.font.clone(),
+                font_size: 20.0,
+                color: Color::rgb(0.7, 0.72, 0.78),
+            },
+        ));
+
+        let (normal, _, _) = menu_button_colors();
+        parent
+            .spawn((
+                ButtonBundle {
+                    style: Style {
+                        width: Val::Px(180.0),
+                        height: Val::Px(48.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    background_color: normal.into(),
+                    ..default()
+                },
+                BackToMenuButton,
+            ))
+            .with_children(|button| {
+                button.spawn(TextBundle::from_section(
+                    "Back",
+                    TextStyle {
+                        font: ui_assets.font.clone(),
+                        font_size: 22.0,
+                        color: Color::rgb(0.95, 0.95, 0.95),
+                    },
+                ));
+            });
+    });
+}
+
+fn cleanup_settings(mut commands: Commands, query: Query<Entity, With<SettingsRoot>>) {
+    cleanup_screen(&mut commands, &query);
+}
+
+fn setup_playing(
+    mut commands: Commands,
+    meshes: Res<MeshAssets>,
+    materials: Res<MaterialAssets>,
+    ui_assets: Res<UiAssets>,
+    current_level: Res<CurrentLevel>,
+    mut game_state: ResMut<GameState>,
+    mut axis: ResMut<InputAxis>,
+    mut swipe: ResMut<SwipeState>,
+) {
+    levels::spawn_level(current_level.index, &mut commands, &meshes, &materials);
+    spawn_play_ui(&mut commands, &ui_assets, current_level.index);
+    game_state.running = true;
+    game_state.outcome = None;
+    axis.value = 0.0;
+    *swipe = SwipeState::default();
+}
+
+fn cleanup_playing(
+    mut commands: Commands,
+    level_query: Query<Entity, With<LevelEntity>>,
+    ui_query: Query<Entity, With<GameplayUiRoot>>,
+    mut game_state: ResMut<GameState>,
+) {
+    cleanup_screen(&mut commands, &level_query);
+    cleanup_screen(&mut commands, &ui_query);
+    commands.remove_resource::<EndScreenUi>();
+    game_state.running = false;
+    game_state.outcome = None;
+}
+
+fn spawn_play_ui(commands: &mut Commands, ui_assets: &UiAssets, level_index: usize) {
+    commands.spawn((
+        TextBundle {
+            style: Style {
+                position_type: PositionType::Absolute,
+                top: Val::Px(24.0),
+                left: Val::Px(24.0),
+                ..default()
+            },
+            text: Text::from_section(
+                LEVEL_NAMES[level_index],
+                TextStyle {
+                    font: ui_assets.font.clone(),
+                    font_size: 24.0,
+                    color: Color::rgb(0.92, 0.94, 1.0),
+                },
+            ),
+            ..default()
+        },
+        GameplayUiRoot,
+        LevelLabel,
+    ));
 
     let root = commands
         .spawn((
@@ -278,6 +727,7 @@ fn setup_ui(mut commands: Commands, ui_assets: Res<UiAssets>) {
                 ..default()
             },
             EndScreenRoot,
+            GameplayUiRoot,
         ))
         .id();
 
@@ -312,21 +762,52 @@ fn setup_ui(mut commands: Commands, ui_assets: Res<UiAssets>) {
             RestartButton,
         ))
         .with_children(|parent| {
-            parent.spawn(TextBundle {
-                text: Text::from_section(
-                    "Restart",
-                    TextStyle {
-                        font: ui_assets.font.clone(),
-                        font_size: 28.0,
-                        color: Color::rgb(0.95, 0.95, 0.95),
-                    },
-                ),
-                ..default()
-            });
+            parent.spawn(TextBundle::from_section(
+                "Restart",
+                TextStyle {
+                    font: ui_assets.font.clone(),
+                    font_size: 28.0,
+                    color: Color::rgb(0.95, 0.95, 0.95),
+                },
+            ));
         })
         .id();
 
-    let quit_button = commands
+    let has_next = level_index + 1 < LEVEL_COUNT;
+    let next_button = if has_next {
+        Some(
+            commands
+                .spawn((
+                    ButtonBundle {
+                        style: Style {
+                            width: Val::Px(200.0),
+                            height: Val::Px(56.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::rgb(0.2, 0.7, 0.38).into(),
+                        ..default()
+                    },
+                    EndScreenNextButton,
+                ))
+                .with_children(|parent| {
+                    parent.spawn(TextBundle::from_section(
+                        "Next Level",
+                        TextStyle {
+                            font: ui_assets.font.clone(),
+                            font_size: 26.0,
+                            color: Color::rgb(0.95, 0.98, 0.95),
+                        },
+                    ));
+                })
+                .id(),
+        )
+    } else {
+        None
+    };
+
+    let menu_button = commands
         .spawn((
             ButtonBundle {
                 style: Style {
@@ -336,87 +817,182 @@ fn setup_ui(mut commands: Commands, ui_assets: Res<UiAssets>) {
                     align_items: AlignItems::Center,
                     ..default()
                 },
-                background_color: Color::rgb(0.8, 0.2, 0.2).into(),
+                background_color: menu_button_colors().0.into(),
                 ..default()
             },
-            QuitButton,
+            EndScreenMenuButton,
         ))
         .with_children(|parent| {
-            parent.spawn(TextBundle {
-                text: Text::from_section(
-                    "Quit",
-                    TextStyle {
-                        font: ui_assets.font.clone(),
-                        font_size: 28.0,
-                        color: Color::rgb(0.95, 0.95, 0.95),
-                    },
-                ),
-                ..default()
-            });
+            parent.spawn(TextBundle::from_section(
+                "Back to Menu",
+                TextStyle {
+                    font: ui_assets.font.clone(),
+                    font_size: 24.0,
+                    color: Color::rgb(0.95, 0.95, 0.95),
+                },
+            ));
         })
         .id();
 
     commands.entity(root).add_child(label);
     commands.entity(root).add_child(restart_button);
-    commands.entity(root).add_child(quit_button);
+    if let Some(next_button) = next_button {
+        commands.entity(root).add_child(next_button);
+    }
+    commands.entity(root).add_child(menu_button);
     commands.insert_resource(EndScreenUi {
         root,
         label,
         restart_button,
-        quit_button,
+        next_button,
+        menu_button,
     });
 }
 
-fn spawn_level(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialAssets) {
-    spawn_ground(commands, meshes, materials);
-    let camera = spawn_camera(commands);
-    spawn_player(commands, meshes, materials);
-    spawn_control_hint(commands, camera, meshes, materials);
-
-    spawn_gate(
-        commands,
-        meshes,
-        materials,
-        Vec3::new(-1.8, 0.0, 14.0),
-        GateKind::Add(10),
-    );
-    spawn_gate(
-        commands,
-        meshes,
-        materials,
-        Vec3::new(1.8, 0.0, 14.0),
-        GateKind::Add(-10),
-    );
-    spawn_gate(
-        commands,
-        meshes,
-        materials,
-        Vec3::new(1.8, 0.0, 24.0),
-        GateKind::Multiply(2),
-    );
-    spawn_obstacle(commands, meshes, materials, Vec3::new(0.0, 0.0, 40.0), 6);
-    spawn_enemy_group(commands, meshes, materials, Vec3::new(0.0, 0.0, 52.0), 16);
-    spawn_gate(
-        commands,
-        meshes,
-        materials,
-        Vec3::new(-2.0, 0.0, 64.0),
-        GateKind::Add(20),
-    );
-    spawn_gate(
-        commands,
-        meshes,
-        materials,
-        Vec3::new(2.0, 0.0, 64.0),
-        GateKind::Add(-10),
-    );
-    spawn_obstacle(commands, meshes, materials, Vec3::new(1.5, 0.0, 72.0), 8);
-    spawn_enemy_group(commands, meshes, materials, Vec3::new(0.0, 0.0, 76.0), 28);
-    spawn_finish_line(commands, meshes, materials, Vec3::new(0.0, 0.0, 82.0));
-    spawn_boss(commands, meshes, materials, Vec3::new(0.0, 0.0, 86.0), 40);
+fn cleanup_screen<T: Component>(commands: &mut Commands, query: &Query<Entity, With<T>>) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
 }
 
-fn spawn_ground(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialAssets) {
+fn menu_button_colors() -> (Color, Color, Color) {
+    (
+        Color::rgb(0.18, 0.2, 0.22),
+        Color::rgb(0.28, 0.3, 0.34),
+        Color::rgb(0.4, 0.42, 0.46),
+    )
+}
+
+fn level_button_colors(completed: bool) -> (Color, Color, Color) {
+    if completed {
+        (
+            Color::rgb(0.2, 0.7, 0.38),
+            Color::rgb(0.26, 0.78, 0.44),
+            Color::rgb(0.16, 0.6, 0.33),
+        )
+    } else {
+        (
+            Color::rgb(0.2, 0.22, 0.26),
+            Color::rgb(0.3, 0.32, 0.36),
+            Color::rgb(0.16, 0.18, 0.22),
+        )
+    }
+}
+
+fn next_button_colors() -> (Color, Color, Color) {
+    (
+        Color::rgb(0.2, 0.7, 0.38),
+        Color::rgb(0.26, 0.78, 0.44),
+        Color::rgb(0.16, 0.6, 0.33),
+    )
+}
+
+fn handle_main_menu_buttons(
+    mut interaction_query: Query<
+        (
+            &Interaction,
+            &mut BackgroundColor,
+            Option<&MenuPlayButton>,
+            Option<&MenuSettingsButton>,
+            Option<&MenuQuitButton>,
+        ),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut next_state: ResMut<NextState<AppScreen>>,
+) {
+    let (normal, hovered, pressed) = menu_button_colors();
+    let quit_colors = (
+        Color::rgb(0.75, 0.2, 0.2),
+        Color::rgb(0.86, 0.3, 0.3),
+        Color::rgb(0.95, 0.4, 0.4),
+    );
+
+    for (interaction, mut color, play, settings, quit) in interaction_query.iter_mut() {
+        let (base, highlight, down) = if quit.is_some() {
+            quit_colors
+        } else {
+            (normal, hovered, pressed)
+        };
+        match *interaction {
+            Interaction::Pressed => {
+                if play.is_some() {
+                    next_state.set(AppScreen::LevelSelect);
+                }
+                if settings.is_some() {
+                    next_state.set(AppScreen::Settings);
+                }
+                if quit.is_some() {
+                    std::process::exit(0);
+                }
+                *color = down.into();
+            }
+            Interaction::Hovered => {
+                *color = highlight.into();
+            }
+            Interaction::None => {
+                *color = base.into();
+            }
+        }
+    }
+}
+
+fn handle_level_select_buttons(
+    mut interaction_query: Query<
+        (&Interaction, &mut BackgroundColor, &LevelButton),
+        (Changed<Interaction>, With<Button>),
+    >,
+    progress: Res<LevelProgress>,
+    mut current_level: ResMut<CurrentLevel>,
+    mut next_state: ResMut<NextState<AppScreen>>,
+) {
+    for (interaction, mut color, button) in interaction_query.iter_mut() {
+        let completed = progress.completed[button.index];
+        let (normal, hovered, pressed) = level_button_colors(completed);
+        match *interaction {
+            Interaction::Pressed => {
+                current_level.index = button.index;
+                next_state.set(AppScreen::Playing);
+                *color = pressed.into();
+            }
+            Interaction::Hovered => {
+                *color = hovered.into();
+            }
+            Interaction::None => {
+                *color = normal.into();
+            }
+        }
+    }
+}
+
+fn handle_back_to_menu(
+    mut interaction_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<BackToMenuButton>),
+    >,
+    mut next_state: ResMut<NextState<AppScreen>>,
+) {
+    let (normal, hovered, pressed) = menu_button_colors();
+    for (interaction, mut color) in interaction_query.iter_mut() {
+        match *interaction {
+            Interaction::Pressed => {
+                next_state.set(AppScreen::MainMenu);
+                *color = pressed.into();
+            }
+            Interaction::Hovered => {
+                *color = hovered.into();
+            }
+            Interaction::None => {
+                *color = normal.into();
+            }
+        }
+    }
+}
+
+pub(super) fn spawn_ground(
+    commands: &mut Commands,
+    meshes: &MeshAssets,
+    materials: &MaterialAssets,
+) {
     let mesh = meshes.unit_cube.clone();
 
     commands
@@ -462,7 +1038,7 @@ fn spawn_ground(commands: &mut Commands, meshes: &MeshAssets, materials: &Materi
         .insert(LevelEntity);
 }
 
-fn spawn_camera(commands: &mut Commands) -> Entity {
+pub(super) fn spawn_camera(commands: &mut Commands) -> Entity {
     commands
         .spawn((
             Camera3dBundle {
@@ -476,7 +1052,11 @@ fn spawn_camera(commands: &mut Commands) -> Entity {
         .id()
 }
 
-fn spawn_player(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialAssets) {
+pub(super) fn spawn_player(
+    commands: &mut Commands,
+    meshes: &MeshAssets,
+    materials: &MaterialAssets,
+) {
     let mesh = meshes.stickman.clone();
 
     let player = commands
@@ -519,7 +1099,7 @@ fn spawn_player(commands: &mut Commands, meshes: &MeshAssets, materials: &Materi
     spawn_formation(commands, formation, 12, mesh, materials.player.clone());
 }
 
-fn spawn_gate(
+pub(super) fn spawn_gate(
     commands: &mut Commands,
     meshes: &MeshAssets,
     materials: &MaterialAssets,
@@ -594,7 +1174,7 @@ fn spawn_gate(
     );
 }
 
-fn spawn_obstacle(
+pub(super) fn spawn_obstacle(
     commands: &mut Commands,
     meshes: &MeshAssets,
     materials: &MaterialAssets,
@@ -619,7 +1199,7 @@ fn spawn_obstacle(
     ));
 }
 
-fn spawn_enemy_group(
+pub(super) fn spawn_enemy_group(
     commands: &mut Commands,
     meshes: &MeshAssets,
     materials: &MaterialAssets,
@@ -668,7 +1248,7 @@ fn spawn_enemy_group(
     spawn_formation(commands, formation, count, mesh, materials.enemy.clone());
 }
 
-fn spawn_finish_line(
+pub(super) fn spawn_finish_line(
     commands: &mut Commands,
     meshes: &MeshAssets,
     materials: &MaterialAssets,
@@ -715,7 +1295,7 @@ fn spawn_finish_line(
     });
 }
 
-fn spawn_boss(
+pub(super) fn spawn_boss(
     commands: &mut Commands,
     meshes: &MeshAssets,
     materials: &MaterialAssets,
@@ -766,7 +1346,7 @@ fn spawn_boss(
     spawn_formation(commands, formation, count, mesh, materials.enemy.clone());
 }
 
-fn spawn_control_hint(
+pub(super) fn spawn_control_hint(
     commands: &mut Commands,
     camera: Entity,
     meshes: &MeshAssets,
@@ -1053,18 +1633,25 @@ fn update_end_screen_ui(
     game_state: Res<GameState>,
     end_screen: Res<EndScreenUi>,
     ui_assets: Res<UiAssets>,
+    mut progress: ResMut<LevelProgress>,
+    current_level: Res<CurrentLevel>,
     mut label_query: Query<
         (&mut Text, &mut Visibility),
         (
             Without<RestartButton>,
-            Without<QuitButton>,
+            Without<EndScreenNextButton>,
+            Without<EndScreenMenuButton>,
             Without<EndScreenRoot>,
         ),
     >,
     mut button_visibility_query: Query<
         &mut Visibility,
         (
-            Or<(With<RestartButton>, With<QuitButton>)>,
+            Or<(
+                With<RestartButton>,
+                With<EndScreenNextButton>,
+                With<EndScreenMenuButton>,
+            )>,
             Without<EndScreenRoot>,
         ),
     >,
@@ -1081,7 +1668,10 @@ fn update_end_screen_ui(
     if let Ok((mut text, mut visibility)) = label_query.get_mut(end_screen.label) {
         if let Some(outcome) = game_state.outcome {
             let (value, color) = match outcome {
-                GameOutcome::Win => ("WIN", Color::rgb(0.3, 0.9, 0.55)),
+                GameOutcome::Win => {
+                    progress.completed[current_level.index] = true;
+                    ("WIN", Color::rgb(0.3, 0.9, 0.55))
+                }
                 GameOutcome::Lose => ("LOSE", Color::rgb(0.95, 0.4, 0.4)),
             };
             text.sections = vec![TextSection::new(
@@ -1098,8 +1688,12 @@ fn update_end_screen_ui(
         }
     }
 
-    // Update visibility for both restart and quit buttons
-    for button_entity in [end_screen.restart_button, end_screen.quit_button] {
+    let mut button_entities = vec![end_screen.restart_button, end_screen.menu_button];
+    if let Some(next_button) = end_screen.next_button {
+        button_entities.push(next_button);
+    }
+
+    for button_entity in button_entities {
         if let Ok(mut visibility) = button_visibility_query.get_mut(button_entity) {
             *visibility = if game_state.outcome.is_some() {
                 Visibility::Visible
@@ -1117,13 +1711,14 @@ fn reset_level(
     game_state: &mut GameState,
     axis: &mut InputAxis,
     swipe: &mut SwipeState,
+    current_level: &CurrentLevel,
     level_query: &Query<Entity, With<LevelEntity>>,
 ) {
     for entity in level_query.iter() {
         commands.entity(entity).despawn_recursive();
     }
 
-    spawn_level(commands, meshes, materials);
+    levels::spawn_level(current_level.index, commands, meshes, materials);
     game_state.running = true;
     game_state.outcome = None;
     axis.value = 0.0;
@@ -1142,6 +1737,7 @@ fn handle_ui_restart(
     mut swipe: ResMut<SwipeState>,
     meshes: Res<MeshAssets>,
     materials: Res<MaterialAssets>,
+    current_level: Res<CurrentLevel>,
     level_query: Query<Entity, With<LevelEntity>>,
 ) {
     if game_state.outcome.is_none() {
@@ -1163,6 +1759,7 @@ fn handle_ui_restart(
                     &mut game_state,
                     &mut axis,
                     &mut swipe,
+                    &current_level,
                     &level_query,
                 );
             }
@@ -1186,6 +1783,7 @@ fn handle_restart(
     mut swipe: ResMut<SwipeState>,
     meshes: Res<MeshAssets>,
     materials: Res<MaterialAssets>,
+    current_level: Res<CurrentLevel>,
     level_query: Query<Entity, With<LevelEntity>>,
 ) {
     if game_state.outcome.is_none() {
@@ -1212,26 +1810,45 @@ fn handle_restart(
         &mut game_state,
         &mut axis,
         &mut swipe,
+        &current_level,
         &level_query,
     );
 }
 
-fn handle_ui_quit(
+fn handle_ui_next_level(
+    mut commands: Commands,
     mut interaction_query: Query<
         (&Interaction, &mut BackgroundColor),
-        (Changed<Interaction>, With<QuitButton>),
+        (Changed<Interaction>, With<EndScreenNextButton>),
     >,
+    mut current_level: ResMut<CurrentLevel>,
+    mut game_state: ResMut<GameState>,
+    mut axis: ResMut<InputAxis>,
+    mut swipe: ResMut<SwipeState>,
+    meshes: Res<MeshAssets>,
+    materials: Res<MaterialAssets>,
+    level_query: Query<Entity, With<LevelEntity>>,
 ) {
-    let normal = Color::rgb(0.8, 0.2, 0.2);
-    let hovered = Color::rgb(0.9, 0.3, 0.3);
-    let pressed = Color::rgb(0.95, 0.4, 0.4);
+    if game_state.outcome.is_none() {
+        return;
+    }
 
+    let (normal, hovered, pressed) = next_button_colors();
     for (interaction, mut color) in interaction_query.iter_mut() {
         match *interaction {
             Interaction::Pressed => {
                 *color = pressed.into();
-                // Exit the game
-                std::process::exit(0);
+                current_level.index = (current_level.index + 1).min(LEVEL_COUNT - 1);
+                reset_level(
+                    &mut commands,
+                    &meshes,
+                    &materials,
+                    &mut game_state,
+                    &mut axis,
+                    &mut swipe,
+                    &current_level,
+                    &level_query,
+                );
             }
             Interaction::Hovered => {
                 *color = hovered.into();
@@ -1240,6 +1857,60 @@ fn handle_ui_quit(
                 *color = normal.into();
             }
         }
+    }
+}
+
+fn handle_ui_back_to_menu(
+    mut interaction_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<EndScreenMenuButton>),
+    >,
+    game_state: Res<GameState>,
+    mut next_state: ResMut<NextState<AppScreen>>,
+) {
+    if game_state.outcome.is_none() {
+        return;
+    }
+
+    let (normal, hovered, pressed) = menu_button_colors();
+    for (interaction, mut color) in interaction_query.iter_mut() {
+        match *interaction {
+            Interaction::Pressed => {
+                *color = pressed.into();
+                next_state.set(AppScreen::MainMenu);
+            }
+            Interaction::Hovered => {
+                *color = hovered.into();
+            }
+            Interaction::None => {
+                *color = normal.into();
+            }
+        }
+    }
+}
+
+fn update_level_label(
+    current_level: Res<CurrentLevel>,
+    ui_assets: Res<UiAssets>,
+    mut label_query: Query<&mut Text, With<LevelLabel>>,
+) {
+    if !current_level.is_changed() {
+        return;
+    }
+
+    let label = LEVEL_NAMES
+        .get(current_level.index)
+        .copied()
+        .unwrap_or(LEVEL_NAMES[0]);
+    for mut text in label_query.iter_mut() {
+        text.sections = vec![TextSection::new(
+            label,
+            TextStyle {
+                font: ui_assets.font.clone(),
+                font_size: 24.0,
+                color: Color::rgb(0.92, 0.94, 1.0),
+            },
+        )];
     }
 }
 
