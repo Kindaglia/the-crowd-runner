@@ -1,0 +1,88 @@
+using Gtk 4.0;
+using Adw 1;
+
+menu primary_menu {
+  section {
+    item {
+      label: _("_Preferences");
+      action: "app.preferences";
+    }
+
+    item {
+      label: _("_Keyboard Shortcuts");
+      action: "win.show-help-overlay";
+    }
+
+    item {
+      label: _("_About Placeholder");
+      action: "app.about";
+    }
+  }
+  
+  section {
+    item {
+      label: _("_Quit");
+      action: "app.quit";
+    }
+  }
+}
+
+template $Window: ApplicationWindow {
+  default-width: 360;
+  default-height: 640;
+  hexpand: true;
+  vexpand: true;
+
+  [titlebar]
+  Adw.HeaderBar headerbar {
+    [end]
+    MenuButton appmenu_button {
+      icon-name: "open-menu-symbolic";
+      menu-model: primary_menu;
+      primary: true;
+      tooltip-text: _("Main Menu");
+    }
+  }
+
+  Box {
+    orientation: vertical;
+    spacing: 24;
+    halign: center;
+    valign: center;
+    // Main title
+    Label {
+      label: _("Hello World!");
+
+      styles [
+        "title-header",
+      ]
+
+      halign: center;
+    }
+
+    // Subtitle
+    Label {
+      label: _("GTK + Rust + Meson + Flatpak + \n Blueprint + Libadwaita = <3");
+
+      styles [
+        "subtitle",
+      ]
+
+      halign: center;
+    }
+
+    // Spacer
+    Separator {}
+
+    // Get Started button
+    Button {
+      label: _("rust love");
+      halign: center;
+
+      styles [
+        "suggested-action",
+        "pill",
+      ]
+    }
+  }
+}

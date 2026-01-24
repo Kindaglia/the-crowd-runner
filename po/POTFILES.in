@@ -1,0 +1,6 @@
+data/org.kindaglia.TheCrowdRunner.desktop.in.in
+data/org.kindaglia.TheCrowdRunner.gschema.xml.in
+data/org.kindaglia.TheCrowdRunner.metainfo.xml.in.in
+data/resources/ui/shortcuts.ui
+data/resources/ui/window.ui
+src/application.rs
