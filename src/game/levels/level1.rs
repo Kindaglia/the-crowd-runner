@@ -1,0 +1,51 @@
+use super::super::{GateKind, MaterialAssets, MeshAssets};
+use bevy::prelude::{Commands, Vec3};
+
+pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialAssets) {
+    super::super::spawn_ground(commands, meshes, materials);
+    let camera = super::super::spawn_camera(commands);
+    super::super::spawn_player(commands, meshes, materials);
+    super::super::spawn_control_hint(commands, camera, meshes, materials);
+
+    super::super::spawn_gate(
+        commands,
+        meshes,
+        materials,
+        Vec3::new(-1.8, 0.0, 14.0),
+        GateKind::Add(10),
+    );
+    super::super::spawn_gate(
+        commands,
+        meshes,
+        materials,
+        Vec3::new(1.8, 0.0, 14.0),
+        GateKind::Add(-10),
+    );
+    super::super::spawn_gate(
+        commands,
+        meshes,
+        materials,
+        Vec3::new(1.8, 0.0, 24.0),
+        GateKind::Multiply(2),
+    );
+    super::super::spawn_obstacle(commands, meshes, materials, Vec3::new(0.0, 0.0, 40.0), 6);
+    super::super::spawn_enemy_group(commands, meshes, materials, Vec3::new(0.0, 0.0, 52.0), 16);
+    super::super::spawn_gate(
+        commands,
+        meshes,
+        materials,
+        Vec3::new(-2.0, 0.0, 64.0),
+        GateKind::Add(20),
+    );
+    super::super::spawn_gate(
+        commands,
+        meshes,
+        materials,
+        Vec3::new(2.0, 0.0, 64.0),
+        GateKind::Add(-10),
+    );
+    super::super::spawn_obstacle(commands, meshes, materials, Vec3::new(1.5, 0.0, 72.0), 8);
+    super::super::spawn_enemy_group(commands, meshes, materials, Vec3::new(0.0, 0.0, 76.0), 28);
+    super::super::spawn_finish_line(commands, meshes, materials, Vec3::new(0.0, 0.0, 82.0));
+    super::super::spawn_boss(commands, meshes, materials, Vec3::new(0.0, 0.0, 86.0), 40);
+}
