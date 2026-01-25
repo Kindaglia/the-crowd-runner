@@ -3,6 +3,7 @@ mod levels;
 use bevy::asset::AssetPlugin;
 use bevy::audio::AudioPlugin;
 use bevy::input::touch::{TouchInput, TouchPhase};
+use bevy::math::primitives::Cuboid;
 use bevy::prelude::*;
 
 const TRACK_WIDTH: f32 = 8.0;
@@ -18,7 +19,12 @@ const DIGIT_DEPTH: f32 = 0.12;
 const DIGIT_GAP: f32 = 0.15;
 const SYMBOL_GAP: f32 = 0.25;
 const LEVEL_COUNT: usize = 3;
-const LEVEL_NAMES: [&str; LEVEL_COUNT] = ["Level 1", "Level 2", "Level 3"];
+const LEVEL_NAMES: [&str; LEVEL_COUNT] = ["1", "2", "3"];
+
+#[derive(Component)]
+struct LevelNumberBox {
+    level_index: usize,
+}
 
 #[derive(Resource, Clone)]
 struct MeshAssets {
@@ -545,7 +551,7 @@ fn setup_level_select(
                             LEVEL_NAMES[index],
                             TextStyle {
                                 font: ui_assets.font.clone(),
-                                font_size: 20.0,
+                                font_size: 32.0,
                                 color: Color::rgb(0.97, 0.98, 1.0),
                             },
                         ));
@@ -701,7 +707,7 @@ fn spawn_play_ui(commands: &mut Commands, ui_assets: &UiAssets, level_index: usi
                 LEVEL_NAMES[level_index],
                 TextStyle {
                     font: ui_assets.font.clone(),
-                    font_size: 24.0,
+                    font_size: 36.0,
                     color: Color::rgb(0.92, 0.94, 1.0),
                 },
             ),
@@ -877,6 +883,65 @@ fn level_button_colors(completed: bool) -> (Color, Color, Color) {
             Color::rgb(0.16, 0.18, 0.22),
         )
     }
+}
+
+fn spawn_level_number_box(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    level_index: usize,
+    color: Color,
+) -> Entity {
+    let _number = level_index + 1;
+    let box_width = DIGIT_WIDTH * 1.5;
+    let box_height = DIGIT_HEIGHT * 1.5;
+    let box_depth = DIGIT_DEPTH * 2.0;
+
+    // Create the box mesh
+    let box_mesh = meshes.add(Mesh::from(Cuboid::new(box_width, box_height, box_depth)));
+
+    // Create the material for the box
+    let box_material = materials.add(StandardMaterial {
+        base_color: color,
+        emissive: color * 0.2,
+        ..default()
+    });
+
+    // Spawn the box
+    commands
+        .spawn((
+            PbrBundle {
+                mesh: box_mesh,
+                material: box_material,
+                transform: Transform::from_xyz(0.0, box_height / 2.0, 0.0),
+                ..default()
+            },
+            LevelNumberBox { level_index },
+        ))
+        .id()
+}
+
+fn spawn_level_number_box_ui(
+    commands: &mut Commands,
+    ui_assets: &UiAssets,
+    level_index: usize,
+    _color: Color,
+) -> Entity {
+    let number = level_index + 1;
+
+    commands
+        .spawn((
+            TextBundle::from_section(
+                number.to_string(),
+                TextStyle {
+                    font: ui_assets.font.clone(),
+                    font_size: 32.0,
+                    color: Color::rgb(0.97, 0.98, 1.0),
+                },
+            ),
+            LevelNumberBox { level_index },
+        ))
+        .id()
 }
 
 fn next_button_colors() -> (Color, Color, Color) {
@@ -1907,7 +1972,7 @@ fn update_level_label(
             label,
             TextStyle {
                 font: ui_assets.font.clone(),
-                font_size: 24.0,
+                font_size: 36.0,
                 color: Color::rgb(0.92, 0.94, 1.0),
             },
         )];
