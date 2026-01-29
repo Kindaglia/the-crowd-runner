@@ -2,7 +2,10 @@ use super::super::{GateKind, MaterialAssets, MeshAssets};
 use bevy::prelude::{Commands, Vec3};
 
 pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialAssets) {
-    super::super::spawn_ground(commands, meshes, materials);
+    let finish_z = 82.0;
+    let boss_z = 86.0;
+    let track_length = boss_z + 12.0;
+    super::super::spawn_ground_with_length(commands, meshes, materials, track_length);
     let camera = super::super::spawn_camera(commands);
     super::super::spawn_player(commands, meshes, materials);
     super::super::spawn_control_hint(commands, camera, meshes, materials);
@@ -46,6 +49,6 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
     );
     super::super::spawn_obstacle(commands, meshes, materials, Vec3::new(1.5, 0.0, 72.0), 8);
     super::super::spawn_enemy_group(commands, meshes, materials, Vec3::new(0.0, 0.0, 76.0), 28);
-    super::super::spawn_finish_line(commands, meshes, materials, Vec3::new(0.0, 0.0, 82.0));
-    super::super::spawn_boss(commands, meshes, materials, Vec3::new(0.0, 0.0, 86.0), 40);
+    super::super::spawn_finish_line(commands, meshes, materials, Vec3::new(0.0, 0.0, finish_z));
+    super::super::spawn_boss(commands, meshes, materials, Vec3::new(0.0, 0.0, boss_z), 40);
 }

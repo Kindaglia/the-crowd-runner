@@ -20,8 +20,11 @@ const DIGIT_HEIGHT: f32 = 1.1;
 const DIGIT_DEPTH: f32 = 0.12;
 const DIGIT_GAP: f32 = 0.15;
 const SYMBOL_GAP: f32 = 0.25;
-const LEVEL_COUNT: usize = 4;
-const LEVEL_NAMES: [&str; LEVEL_COUNT] = ["Level 1", "Level 2", "Level 3", "Level 4"];
+const LEVEL_COUNT: usize = 10;
+const LEVEL_NAMES: [&str; LEVEL_COUNT] = [
+    "Level 1", "Level 2", "Level 3", "Level 4", "Level 5", "Level 6", "Level 7", "Level 8",
+    "Level 9", "Level 10",
+];
 
 #[derive(Resource, Clone)]
 struct MeshAssets {
@@ -262,6 +265,7 @@ struct EndScreenUi {
 enum GateKind {
     Add(i32),
     Multiply(i32),
+    Divide(i32),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -270,6 +274,7 @@ enum LabelPrefix {
     Plus,
     Minus,
     Times,
+    Divide,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -1056,20 +1061,29 @@ pub(super) fn spawn_ground(
     meshes: &MeshAssets,
     materials: &MaterialAssets,
 ) {
+    spawn_ground_with_length(commands, meshes, materials, TRACK_LENGTH);
+}
+
+pub(super) fn spawn_ground_with_length(
+    commands: &mut Commands,
+    meshes: &MeshAssets,
+    materials: &MaterialAssets,
+    length: f32,
+) {
     let mesh = meshes.unit_cube.clone();
 
     commands
         .spawn(PbrBundle {
             mesh: mesh.clone(),
             material: materials.ground.clone(),
-            transform: Transform::from_translation(Vec3::new(0.0, -0.05, TRACK_LENGTH * 0.5))
-                .with_scale(Vec3::new(TRACK_WIDTH, 0.1, TRACK_LENGTH)),
+            transform: Transform::from_translation(Vec3::new(0.0, -0.05, length * 0.5))
+                .with_scale(Vec3::new(TRACK_WIDTH, 0.1, length)),
             ..default()
         })
         .insert(LevelEntity);
 
     let rail_height = 0.6;
-    let rail_length = TRACK_LENGTH;
+    let rail_length = length;
     let rail_thickness = 0.2;
     for side in [-1.0, 1.0] {
         commands
@@ -1079,7 +1093,7 @@ pub(super) fn spawn_ground(
                 transform: Transform::from_translation(Vec3::new(
                     side * (TRACK_WIDTH * 0.5 + rail_thickness * 0.5),
                     rail_height * 0.5,
-                    TRACK_LENGTH * 0.5,
+                    length * 0.5,
                 ))
                 .with_scale(Vec3::new(rail_thickness, rail_height, rail_length)),
                 ..default()
@@ -1095,7 +1109,7 @@ pub(super) fn spawn_ground(
                 ..default()
             },
             transform: Transform::from_xyz(12.0, 14.0, -10.0)
-                .looking_at(Vec3::new(0.0, 0.0, 40.0), Vec3::Y),
+                .looking_at(Vec3::new(0.0, 0.0, length * 0.45), Vec3::Y),
             ..default()
         })
         .insert(LevelEntity);
@@ -1176,7 +1190,7 @@ pub(super) fn spawn_gate(
     let thickness = 0.16;
     let material = match kind {
         GateKind::Add(_) => materials.gate_add.clone(),
-        GateKind::Multiply(_) => materials.gate_mul.clone(),
+        GateKind::Multiply(_) | GateKind::Divide(_) => materials.gate_mul.clone(),
     };
 
     let gate = commands
@@ -1224,6 +1238,7 @@ pub(super) fn spawn_gate(
             (prefix, amount.abs())
         }
         GateKind::Multiply(multiplier) => (LabelPrefix::Times, multiplier),
+        GateKind::Divide(divisor) => (LabelPrefix::Divide, divisor),
     };
 
     spawn_static_label(
@@ -1677,6 +1692,11 @@ fn handle_collisions(
             match gate.kind {
                 GateKind::Add(amount) => crowd.current += amount,
                 GateKind::Multiply(multiplier) => crowd.current *= multiplier,
+                GateKind::Divide(divisor) => {
+                    if divisor > 0 {
+                        crowd.current /= divisor;
+                    }
+                }
             }
             commands.entity(entity).despawn_recursive();
             break;
@@ -2316,6 +2336,16 @@ fn spawn_symbol(
                 material,
                 transform: Transform::from_translation(Vec3::new(x_offset, 0.0, 0.0))
                     .with_rotation(Quat::from_rotation_z(-45.0_f32.to_radians()))
+                    .with_scale(Vec3::new(DIGIT_WIDTH, 0.12, DIGIT_DEPTH)),
+                ..default()
+            });
+        }
+        LabelPrefix::Divide => {
+            parent.spawn(PbrBundle {
+                mesh,
+                material,
+                transform: Transform::from_translation(Vec3::new(x_offset, 0.0, 0.0))
+                    .with_rotation(Quat::from_rotation_z(-35.0_f32.to_radians()))
                     .with_scale(Vec3::new(DIGIT_WIDTH, 0.12, DIGIT_DEPTH)),
                 ..default()
             });
