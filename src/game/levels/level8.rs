@@ -10,26 +10,29 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
     super::super::spawn_player(commands, meshes, materials);
     super::super::spawn_control_hint(commands, camera, meshes, materials);
 
-    super::super::spawn_gate(
+    super::super::spawn_gate_with_label_offset(
         commands,
         meshes,
         materials,
         Vec3::new(-2.0, 0.0, 12.0),
         GateKind::Add(14),
+        Vec3::new(0.0, 1.2, 0.0),
     );
-    super::super::spawn_gate(
+    super::super::spawn_gate_with_label_offset(
         commands,
         meshes,
         materials,
         Vec3::new(2.0, 0.0, 12.0),
         GateKind::Divide(2),
+        Vec3::new(0.0, 1.2, 0.0),
     );
-    super::super::spawn_gate(
+    super::super::spawn_gate_with_label_offset(
         commands,
         meshes,
         materials,
         Vec3::new(0.0, 0.0, 26.0),
         GateKind::Multiply(3),
+        Vec3::new(0.0, 1.2, 0.0),
     );
     super::super::spawn_moving_obstacle(
         commands,
@@ -42,20 +45,21 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
         3.4,
         0.9,
     );
-    super::super::spawn_enemy_group(commands, meshes, materials, Vec3::new(-0.8, 0.0, 42.0), 36);
-    super::super::spawn_gate(
+    super::super::spawn_gate_with_label_offset(
         commands,
         meshes,
         materials,
         Vec3::new(-1.6, 0.0, 52.0),
         GateKind::Add(-20),
+        Vec3::new(0.0, 1.2, 0.0),
     );
-    super::super::spawn_gate(
+    super::super::spawn_gate_with_label_offset(
         commands,
         meshes,
         materials,
         Vec3::new(1.6, 0.0, 52.0),
         GateKind::Divide(3),
+        Vec3::new(0.0, 1.2, 0.0),
     );
     super::super::spawn_moving_obstacle(
         commands,
@@ -68,20 +72,21 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
         3.6,
         1.9,
     );
-    super::super::spawn_enemy_group(commands, meshes, materials, Vec3::new(0.8, 0.0, 68.0), 42);
-    super::super::spawn_gate(
+    super::super::spawn_gate_with_label_offset(
         commands,
         meshes,
         materials,
         Vec3::new(-2.0, 0.0, 76.0),
         GateKind::Multiply(2),
+        Vec3::new(0.0, 1.2, 0.0),
     );
-    super::super::spawn_gate(
+    super::super::spawn_gate_with_label_offset(
         commands,
         meshes,
         materials,
         Vec3::new(2.0, 0.0, 76.0),
         GateKind::Divide(4),
+        Vec3::new(0.0, 1.2, 0.0),
     );
     super::super::spawn_moving_obstacle(
         commands,
@@ -94,7 +99,6 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
         3.8,
         2.8,
     );
-    super::super::spawn_enemy_group(commands, meshes, materials, Vec3::new(0.0, 0.0, 92.0), 46);
     super::super::spawn_moving_obstacle(
         commands,
         meshes,

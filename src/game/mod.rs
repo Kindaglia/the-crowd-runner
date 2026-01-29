@@ -1740,7 +1740,6 @@ fn handle_player_member_collisions(
     formation_query: Query<&PlayerFormation>,
     obstacle_query: Query<(Entity, &Transform, &Obstacle)>,
     enemy_query: Query<(&Transform, &EnemyGroup)>,
-    current_level: Res<CurrentLevel>,
 ) {
     let member_half_width = 0.2;
     let member_half_depth = 0.25;
@@ -1757,37 +1756,20 @@ fn handle_player_member_collisions(
         let z = transform.translation().z;
         let mut hit = false;
 
-        if current_level.index == 0 {
-            for (obstacle_entity, obstacle_transform, obstacle) in obstacle_query.iter() {
-                if (x - obstacle_transform.translation.x).abs()
-                    < obstacle.width * 0.5 + member_half_width
-                    && (z - obstacle_transform.translation.z).abs()
-                        < obstacle_half_depth + member_half_depth
-                {
-                    hit = true;
-                    if !obstacle_hits.contains(&obstacle_entity) {
-                        if let Ok(formation) = formation_query.get(parent.get()) {
-                            *obstacle_hits_by_owner.entry(formation.owner).or_insert(0) += 1;
-                            obstacle_hits.insert(obstacle_entity);
-                        }
-                    }
-                    break;
-                }
-            }
-        } else {
-            for (obstacle_entity, obstacle_transform, obstacle) in obstacle_query.iter() {
-                if (x - obstacle_transform.translation.x).abs()
-                    < obstacle.width * 0.5 + member_half_width
-                    && (z - obstacle_transform.translation.z).abs()
-                        < obstacle_half_depth + member_half_depth
-                {
-                    hit = true;
+        for (obstacle_entity, obstacle_transform, obstacle) in obstacle_query.iter() {
+            if (x - obstacle_transform.translation.x).abs()
+                < obstacle.width * 0.5 + member_half_width
+                && (z - obstacle_transform.translation.z).abs()
+                    < obstacle_half_depth + member_half_depth
+            {
+                hit = true;
+                if !obstacle_hits.contains(&obstacle_entity) {
                     if let Ok(formation) = formation_query.get(parent.get()) {
-                        *lost.entry(formation.owner).or_insert(0) += 1;
-                        drops.insert(entity);
+                        *obstacle_hits_by_owner.entry(formation.owner).or_insert(0) += 1;
+                        obstacle_hits.insert(obstacle_entity);
                     }
-                    break;
                 }
+                break;
             }
         }
 
@@ -1869,7 +1851,6 @@ fn handle_collisions(
     mut game_state: ResMut<GameState>,
     mut player_query: Query<(&Transform, &mut CrowdCount), With<Player>>,
     mut gate_query: Query<(Entity, &Transform, &Gate)>,
-    mut obstacle_query: Query<(Entity, &Transform, &Obstacle)>,
     finish_query: Query<(Entity, &Transform), With<FinishLine>>,
     mut enemy_query: Query<(
         Entity,
@@ -1878,7 +1859,6 @@ fn handle_collisions(
         &EnemyGroup,
         Option<&Boss>,
     )>,
-    current_level: Res<CurrentLevel>,
 ) {
     if !game_state.running {
         return;
@@ -1903,26 +1883,6 @@ fn handle_collisions(
                     }
                 }
             }
-            commands.entity(entity).despawn_recursive();
-            break;
-        }
-    }
-
-    for (entity, transform, obstacle) in obstacle_query.iter_mut() {
-        if current_level.index == 0 {
-            continue;
-        }
-        let hit = if current_level.index == 0 {
-            let obstacle_half_depth = 0.3;
-            (player_pos.z - transform.translation.z).abs() < PLAYER_HALF_DEPTH + obstacle_half_depth
-                && (player_pos.x - transform.translation.x).abs()
-                    < PLAYER_HALF_WIDTH + obstacle.width * 0.5
-        } else {
-            (player_pos.z - transform.translation.z).abs() < COLLISION_RANGE
-                && (player_pos.x - transform.translation.x).abs() < obstacle.width * 0.5
-        };
-        if hit {
-            crowd.current -= obstacle.damage;
             commands.entity(entity).despawn_recursive();
             break;
         }
