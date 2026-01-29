@@ -4,7 +4,7 @@ use bevy::asset::AssetPlugin;
 use bevy::audio::AudioPlugin;
 use bevy::input::touch::{TouchInput, TouchPhase};
 use bevy::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -365,8 +365,9 @@ pub fn run() {
                 update_swipe_axis,
                 update_input_axis,
                 move_player,
-                drop_player_crowd_out_of_bounds,
                 update_moving_obstacles,
+                drop_player_crowd_out_of_bounds,
+                handle_player_member_collisions,
                 handle_collisions,
                 update_end_screen_ui,
                 handle_ui_restart,
@@ -1714,6 +1715,109 @@ fn drop_player_crowd_out_of_bounds(
     }
 }
 
+fn handle_player_member_collisions(
+    mut commands: Commands,
+    mut player_query: Query<&mut CrowdCount, With<Player>>,
+    member_query: Query<(Entity, &GlobalTransform, &Parent), With<PlayerCrowdMember>>,
+    formation_query: Query<&PlayerFormation>,
+    obstacle_query: Query<(Entity, &Transform, &Obstacle)>,
+    enemy_query: Query<(&Transform, &EnemyGroup)>,
+    current_level: Res<CurrentLevel>,
+) {
+    let member_half_width = 0.2;
+    let member_half_depth = 0.25;
+    let obstacle_half_depth = 0.3;
+    let enemy_half_depth = 0.6;
+
+    let mut drops: HashSet<Entity> = HashSet::new();
+    let mut lost: HashMap<Entity, i32> = HashMap::new();
+    let mut obstacle_hits: HashSet<Entity> = HashSet::new();
+    let mut obstacle_hits_by_owner: HashMap<Entity, i32> = HashMap::new();
+
+    for (entity, transform, parent) in member_query.iter() {
+        let x = transform.translation().x;
+        let z = transform.translation().z;
+        let mut hit = false;
+
+        if current_level.index == 0 {
+            for (obstacle_entity, obstacle_transform, obstacle) in obstacle_query.iter() {
+                if (x - obstacle_transform.translation.x).abs()
+                    < obstacle.width * 0.5 + member_half_width
+                    && (z - obstacle_transform.translation.z).abs()
+                        < obstacle_half_depth + member_half_depth
+                {
+                    hit = true;
+                    if !obstacle_hits.contains(&obstacle_entity) {
+                        if let Ok(formation) = formation_query.get(parent.get()) {
+                            *obstacle_hits_by_owner.entry(formation.owner).or_insert(0) += 1;
+                            obstacle_hits.insert(obstacle_entity);
+                        }
+                    }
+                    break;
+                }
+            }
+        } else {
+            for (obstacle_entity, obstacle_transform, obstacle) in obstacle_query.iter() {
+                if (x - obstacle_transform.translation.x).abs()
+                    < obstacle.width * 0.5 + member_half_width
+                    && (z - obstacle_transform.translation.z).abs()
+                        < obstacle_half_depth + member_half_depth
+                {
+                    hit = true;
+                    if let Ok(formation) = formation_query.get(parent.get()) {
+                        *lost.entry(formation.owner).or_insert(0) += 1;
+                        drops.insert(entity);
+                    }
+                    break;
+                }
+            }
+        }
+
+        if !hit {
+            for (enemy_transform, enemy) in enemy_query.iter() {
+                if (x - enemy_transform.translation.x).abs() < enemy.width * 0.5 + member_half_width
+                    && (z - enemy_transform.translation.z).abs()
+                        < enemy_half_depth + member_half_depth
+                {
+                    hit = true;
+                    if let Ok(formation) = formation_query.get(parent.get()) {
+                        *lost.entry(formation.owner).or_insert(0) += 1;
+                        drops.insert(entity);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    for obstacle in obstacle_hits.iter() {
+        commands.entity(*obstacle).despawn_recursive();
+    }
+
+    for (owner, hits) in obstacle_hits_by_owner {
+        if let Ok(mut count) = player_query.get_mut(owner) {
+            for _ in 0..hits {
+                let loss = ((count.current.max(0) as f32) * 0.10).ceil() as i32;
+                let loss = loss.clamp(1, count.current.max(0));
+                count.current = (count.current - loss).max(0);
+                if count.current == 0 {
+                    break;
+                }
+            }
+        }
+    }
+
+    for entity in drops.iter() {
+        commands.entity(*entity).despawn_recursive();
+    }
+
+    for (owner, amount) in lost {
+        if let Ok(mut count) = player_query.get_mut(owner) {
+            count.current = (count.current - amount).max(0);
+        }
+    }
+}
+
 fn move_player(
     time: Res<Time>,
     axis: Res<InputAxis>,
@@ -1787,6 +1891,9 @@ fn handle_collisions(
     }
 
     for (entity, transform, obstacle) in obstacle_query.iter_mut() {
+        if current_level.index == 0 {
+            continue;
+        }
         let hit = if current_level.index == 0 {
             let obstacle_half_depth = 0.3;
             (player_pos.z - transform.translation.z).abs() < PLAYER_HALF_DEPTH + obstacle_half_depth

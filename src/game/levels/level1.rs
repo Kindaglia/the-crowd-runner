@@ -32,7 +32,6 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
         GateKind::Multiply(2),
     );
     super::super::spawn_obstacle(commands, meshes, materials, Vec3::new(0.0, 0.0, 40.0), 6);
-    super::super::spawn_enemy_group(commands, meshes, materials, Vec3::new(0.0, 0.0, 52.0), 16);
     super::super::spawn_gate(
         commands,
         meshes,
@@ -48,7 +47,6 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
         GateKind::Add(-10),
     );
     super::super::spawn_obstacle(commands, meshes, materials, Vec3::new(1.5, 0.0, 72.0), 8);
-    super::super::spawn_enemy_group(commands, meshes, materials, Vec3::new(0.0, 0.0, 76.0), 28);
     super::super::spawn_finish_line(commands, meshes, materials, Vec3::new(0.0, 0.0, finish_z));
-    super::super::spawn_boss(commands, meshes, materials, Vec3::new(0.0, 0.0, boss_z), 40);
+    super::super::spawn_boss(commands, meshes, materials, Vec3::new(0.0, 0.0, boss_z), 32);
 }
