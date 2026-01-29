@@ -1200,6 +1200,24 @@ pub(super) fn spawn_gate(
     position: Vec3,
     kind: GateKind,
 ) {
+    spawn_gate_with_label_offset(
+        commands,
+        meshes,
+        materials,
+        position,
+        kind,
+        Vec3::new(0.0, 2.2 + 0.6, 0.0),
+    );
+}
+
+pub(super) fn spawn_gate_with_label_offset(
+    commands: &mut Commands,
+    meshes: &MeshAssets,
+    materials: &MaterialAssets,
+    position: Vec3,
+    kind: GateKind,
+    label_offset: Vec3,
+) {
     let mesh = meshes.unit_cube.clone();
 
     let width = 3.4;
@@ -1265,7 +1283,7 @@ pub(super) fn spawn_gate(
         prefix,
         value,
         materials.display_gate.clone(),
-        Vec3::new(0.0, height + 0.6, 0.0),
+        label_offset,
     );
 }
 

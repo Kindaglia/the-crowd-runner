@@ -10,41 +10,46 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
     super::super::spawn_player(commands, meshes, materials);
     super::super::spawn_control_hint(commands, camera, meshes, materials);
 
-    super::super::spawn_gate(
+    super::super::spawn_gate_with_label_offset(
         commands,
         meshes,
         materials,
         Vec3::new(-1.8, 0.0, 14.0),
         GateKind::Add(10),
+        Vec3::new(0.0, 1.2, 0.0),
     );
-    super::super::spawn_gate(
+    super::super::spawn_gate_with_label_offset(
         commands,
         meshes,
         materials,
         Vec3::new(1.8, 0.0, 14.0),
         GateKind::Add(-10),
+        Vec3::new(0.0, 1.2, 0.0),
     );
-    super::super::spawn_gate(
+    super::super::spawn_gate_with_label_offset(
         commands,
         meshes,
         materials,
         Vec3::new(1.8, 0.0, 24.0),
         GateKind::Multiply(2),
+        Vec3::new(0.0, 1.2, 0.0),
     );
     super::super::spawn_obstacle(commands, meshes, materials, Vec3::new(0.0, 0.0, 40.0), 6);
-    super::super::spawn_gate(
+    super::super::spawn_gate_with_label_offset(
         commands,
         meshes,
         materials,
         Vec3::new(-2.0, 0.0, 64.0),
         GateKind::Add(20),
+        Vec3::new(0.0, 1.2, 0.0),
     );
-    super::super::spawn_gate(
+    super::super::spawn_gate_with_label_offset(
         commands,
         meshes,
         materials,
         Vec3::new(2.0, 0.0, 64.0),
         GateKind::Add(-10),
+        Vec3::new(0.0, 1.2, 0.0),
     );
     super::super::spawn_obstacle(commands, meshes, materials, Vec3::new(1.5, 0.0, 72.0), 8);
     super::super::spawn_finish_line(commands, meshes, materials, Vec3::new(0.0, 0.0, finish_z));
