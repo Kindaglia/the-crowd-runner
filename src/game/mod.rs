@@ -4,6 +4,9 @@ use bevy::asset::AssetPlugin;
 use bevy::audio::AudioPlugin;
 use bevy::input::touch::{TouchInput, TouchPhase};
 use bevy::prelude::*;
+use std::env;
+use std::fs;
+use std::path::PathBuf;
 
 const TRACK_WIDTH: f32 = 8.0;
 const TRACK_LENGTH: f32 = 90.0;
@@ -80,6 +83,51 @@ impl Default for LevelProgress {
             completed: [false; LEVEL_COUNT],
         }
     }
+}
+
+impl LevelProgress {
+    fn load() -> Self {
+        let path = progress_file_path();
+        let Ok(content) = fs::read_to_string(&path) else {
+            return Self::default();
+        };
+        let mut completed = [false; LEVEL_COUNT];
+        for (index, value) in content.trim().split(',').enumerate() {
+            if index >= LEVEL_COUNT {
+                break;
+            }
+            completed[index] = value.trim() == "1";
+        }
+        Self { completed }
+    }
+
+    fn save(&self) {
+        let path = progress_file_path();
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let data = self
+            .completed
+            .iter()
+            .map(|value| if *value { "1" } else { "0" })
+            .collect::<Vec<_>>()
+            .join(",");
+        let _ = fs::write(path, data);
+    }
+}
+
+fn progress_file_path() -> PathBuf {
+    if let Ok(data_home) = env::var("XDG_DATA_HOME") {
+        return PathBuf::from(data_home)
+            .join("the-crowd-runner")
+            .join("progress.txt");
+    }
+    let home = env::var("HOME").unwrap_or_else(|_| ".".into());
+    PathBuf::from(home)
+        .join(".local")
+        .join("share")
+        .join("the-crowd-runner")
+        .join("progress.txt")
 }
 
 #[derive(Resource, Clone, Copy)]
@@ -241,7 +289,7 @@ pub fn run() {
             running: false,
             outcome: None,
         })
-        .insert_resource(LevelProgress::default())
+        .insert_resource(LevelProgress::load())
         .insert_resource(CurrentLevel { index: 0 })
         .add_plugins(
             DefaultPlugins
@@ -1674,7 +1722,10 @@ fn update_end_screen_ui(
         if let Some(outcome) = game_state.outcome {
             let (value, color) = match outcome {
                 GameOutcome::Win => {
-                    progress.completed[current_level.index] = true;
+                    if !progress.completed[current_level.index] {
+                        progress.completed[current_level.index] = true;
+                        progress.save();
+                    }
                     ("WIN", Color::rgb(0.3, 0.9, 0.55))
                 }
                 GameOutcome::Lose => ("LOSE", Color::rgb(0.95, 0.4, 0.4)),
