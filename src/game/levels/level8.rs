@@ -22,7 +22,7 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
         commands,
         meshes,
         materials,
-        Vec3::new(2.0, 0.0, 12.0),
+        Vec3::new(2.0, 0.0, 14.0),
         GateKind::Divide(2),
         Vec3::new(0.0, 1.2, 0.0),
     );
@@ -57,7 +57,7 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
         commands,
         meshes,
         materials,
-        Vec3::new(1.6, 0.0, 52.0),
+        Vec3::new(1.6, 0.0, 54.0),
         GateKind::Divide(3),
         Vec3::new(0.0, 1.2, 0.0),
     );
@@ -84,7 +84,7 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
         commands,
         meshes,
         materials,
-        Vec3::new(2.0, 0.0, 76.0),
+        Vec3::new(2.0, 0.0, 78.0),
         GateKind::Divide(4),
         Vec3::new(0.0, 1.2, 0.0),
     );
@@ -111,5 +111,5 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
         3.6,
     );
     super::super::spawn_finish_line(commands, meshes, materials, Vec3::new(0.0, 0.0, finish_z));
-    super::super::spawn_boss(commands, meshes, materials, Vec3::new(0.0, 0.0, boss_z), 76);
+    super::super::spawn_boss(commands, meshes, materials, Vec3::new(0.0, 0.0, boss_z), 50);
 }

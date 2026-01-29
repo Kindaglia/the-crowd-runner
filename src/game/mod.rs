@@ -1622,6 +1622,7 @@ fn spawn_player_formation(
     commands.entity(formation).despawn_descendants();
     let count = count.max(0) as usize;
     let columns = (count as f32).sqrt().ceil().max(1.0) as usize;
+    let columns = columns.min(4);
     let spacing = 0.55;
     for index in 0..count {
         let row = index / columns;

@@ -22,7 +22,7 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
         commands,
         meshes,
         materials,
-        Vec3::new(1.6, 0.0, 13.0),
+        Vec3::new(1.6, 0.0, 15.0),
         GateKind::Add(-5),
         Vec3::new(0.0, 1.2, 0.0),
     );
@@ -47,7 +47,7 @@ pub fn spawn(commands: &mut Commands, meshes: &MeshAssets, materials: &MaterialA
         commands,
         meshes,
         materials,
-        Vec3::new(1.8, 0.0, 60.0),
+        Vec3::new(1.8, 0.0, 62.0),
         GateKind::Multiply(2),
         Vec3::new(0.0, 1.2, 0.0),
     );
