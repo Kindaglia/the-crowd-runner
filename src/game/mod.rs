@@ -1621,10 +1621,10 @@ fn spawn_player_formation(
 ) {
     commands.entity(formation).despawn_descendants();
     let count = count.max(0) as usize;
-    let columns = (count as f32).sqrt().ceil().max(1.0) as usize;
-    let columns = columns.min(4);
+    let visible_count = count.min(20);
+    let columns = visible_count.min(4).max(1);
     let spacing = 0.55;
-    for index in 0..count {
+    for index in 0..visible_count {
         let row = index / columns;
         let col = index % columns;
         let offset_x = (col as f32 - (columns as f32 - 1.0) * 0.5) * spacing;
