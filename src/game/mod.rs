@@ -20,8 +20,8 @@ const DIGIT_HEIGHT: f32 = 1.1;
 const DIGIT_DEPTH: f32 = 0.12;
 const DIGIT_GAP: f32 = 0.15;
 const SYMBOL_GAP: f32 = 0.25;
-const LEVEL_COUNT: usize = 3;
-const LEVEL_NAMES: [&str; LEVEL_COUNT] = ["Level 1", "Level 2", "Level 3"];
+const LEVEL_COUNT: usize = 4;
+const LEVEL_NAMES: [&str; LEVEL_COUNT] = ["Level 1", "Level 2", "Level 3", "Level 4"];
 
 #[derive(Resource, Clone)]
 struct MeshAssets {
@@ -207,6 +207,15 @@ struct Obstacle {
 }
 
 #[derive(Component)]
+struct MovingObstacle {
+    origin: Vec3,
+    axis: Vec3,
+    amplitude: f32,
+    speed: f32,
+    phase: f32,
+}
+
+#[derive(Component)]
 struct NumberDisplay {
     value: i32,
     prefix: LabelPrefix,
@@ -340,6 +349,7 @@ pub fn run() {
                 update_swipe_axis,
                 update_input_axis,
                 move_player,
+                update_moving_obstacles,
                 handle_collisions,
                 update_end_screen_ui,
                 handle_ui_restart,
@@ -1250,6 +1260,62 @@ pub(super) fn spawn_obstacle(
         Obstacle { damage, width },
         LevelEntity,
     ));
+}
+
+pub(super) fn spawn_moving_obstacle(
+    commands: &mut Commands,
+    meshes: &MeshAssets,
+    materials: &MaterialAssets,
+    position: Vec3,
+    damage: i32,
+    axis: Vec3,
+    amplitude: f32,
+    speed: f32,
+    phase: f32,
+) {
+    let mesh = meshes.unit_cube.clone();
+    let width = 2.0;
+    let height = 0.6;
+    let depth = 0.6;
+    let axis = axis.normalize_or_zero();
+    let mut safe_amplitude = amplitude;
+    if axis.x.abs() > 0.0 {
+        let half_track = TRACK_WIDTH * 0.5;
+        let half_width = width * 0.5;
+        let left_limit = -half_track + half_width;
+        let right_limit = half_track - half_width;
+        let max_left = position.x - left_limit;
+        let max_right = right_limit - position.x;
+        let bound = max_left.min(max_right).max(0.0);
+        safe_amplitude = safe_amplitude.min(bound);
+    }
+
+    commands.spawn((
+        PbrBundle {
+            mesh: mesh.clone(),
+            material: materials.obstacle.clone(),
+            transform: Transform::from_translation(position + Vec3::new(0.0, height * 0.5, 0.0))
+                .with_scale(Vec3::new(width, height, depth)),
+            ..default()
+        },
+        Obstacle { damage, width },
+        MovingObstacle {
+            origin: position + Vec3::new(0.0, height * 0.5, 0.0),
+            axis,
+            amplitude: safe_amplitude,
+            speed,
+            phase,
+        },
+        LevelEntity,
+    ));
+}
+
+fn update_moving_obstacles(time: Res<Time>, mut query: Query<(&mut Transform, &MovingObstacle)>) {
+    let t = time.elapsed_seconds();
+    for (mut transform, movement) in query.iter_mut() {
+        let offset = (t * movement.speed + movement.phase).sin() * movement.amplitude;
+        transform.translation = movement.origin + movement.axis * offset;
+    }
 }
 
 pub(super) fn spawn_enemy_group(
