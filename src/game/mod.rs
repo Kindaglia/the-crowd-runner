@@ -517,7 +517,12 @@ fn setup_level_select(
             .spawn(NodeBundle {
                 style: Style {
                     flex_direction: FlexDirection::Row,
-                    column_gap: Val::Px(16.0),
+                    flex_wrap: FlexWrap::Wrap,
+                    width: Val::Px(328.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(12.0),
+                    row_gap: Val::Px(12.0),
                     ..default()
                 },
                 ..default()
@@ -529,8 +534,8 @@ fn setup_level_select(
                     row.spawn((
                         ButtonBundle {
                             style: Style {
-                                width: Val::Px(140.0),
-                                height: Val::Px(54.0),
+                                width: Val::Px(56.0),
+                                height: Val::Px(56.0),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
                                 ..default()
@@ -542,10 +547,10 @@ fn setup_level_select(
                     ))
                     .with_children(|button| {
                         button.spawn(TextBundle::from_section(
-                            LEVEL_NAMES[index],
+                            format!("{}", index + 1),
                             TextStyle {
                                 font: ui_assets.font.clone(),
-                                font_size: 20.0,
+                                font_size: 22.0,
                                 color: Color::rgb(0.97, 0.98, 1.0),
                             },
                         ));
