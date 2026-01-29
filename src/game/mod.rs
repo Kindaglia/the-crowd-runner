@@ -4,6 +4,7 @@ use bevy::asset::AssetPlugin;
 use bevy::audio::AudioPlugin;
 use bevy::input::touch::{TouchInput, TouchPhase};
 use bevy::prelude::*;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -13,6 +14,8 @@ const TRACK_LENGTH: f32 = 90.0;
 const PLAYER_SPEED: f32 = 7.5;
 const LATERAL_SPEED: f32 = 8.0;
 const PLAYER_MARGIN: f32 = 0.8;
+const PLAYER_HALF_WIDTH: f32 = 0.45;
+const PLAYER_HALF_DEPTH: f32 = 0.6;
 const COLLISION_RANGE: f32 = 1.1;
 const DISPLAY_HEIGHT: f32 = 2.2;
 const DIGIT_WIDTH: f32 = 0.7;
@@ -188,6 +191,14 @@ struct CrowdCount {
 struct CrowdFormation;
 
 #[derive(Component)]
+struct PlayerFormation {
+    owner: Entity,
+}
+
+#[derive(Component)]
+struct PlayerCrowdMember;
+
+#[derive(Component)]
 struct EnemyCount {
     current: i32,
 }
@@ -354,6 +365,7 @@ pub fn run() {
                 update_swipe_axis,
                 update_input_axis,
                 move_player,
+                drop_player_crowd_out_of_bounds,
                 update_moving_obstacles,
                 handle_collisions,
                 update_end_screen_ui,
@@ -1146,7 +1158,11 @@ pub(super) fn spawn_player(
         .id();
 
     let formation = commands
-        .spawn((SpatialBundle::default(), CrowdFormation))
+        .spawn((
+            SpatialBundle::default(),
+            CrowdFormation,
+            PlayerFormation { owner: player },
+        ))
         .id();
     commands.entity(player).add_child(formation);
 
@@ -1173,7 +1189,7 @@ pub(super) fn spawn_player(
     commands.entity(player).add_child(display_entity);
     rebuild_display(commands, display_entity, &display, meshes.unit_cube.clone());
 
-    spawn_formation(commands, formation, 12, mesh, materials.player.clone());
+    spawn_player_formation(commands, formation, 12, mesh, materials.player.clone());
 }
 
 pub(super) fn spawn_gate(
@@ -1577,6 +1593,36 @@ fn spawn_formation(
     }
 }
 
+fn spawn_player_formation(
+    commands: &mut Commands,
+    formation: Entity,
+    count: i32,
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+) {
+    commands.entity(formation).despawn_descendants();
+    let count = count.max(0) as usize;
+    let columns = (count as f32).sqrt().ceil().max(1.0) as usize;
+    let spacing = 0.55;
+    for index in 0..count {
+        let row = index / columns;
+        let col = index % columns;
+        let offset_x = (col as f32 - (columns as f32 - 1.0) * 0.5) * spacing;
+        let offset_z = -(row as f32) * spacing;
+        commands.entity(formation).with_children(|parent| {
+            parent.spawn((
+                PbrBundle {
+                    mesh: mesh.clone(),
+                    material: material.clone(),
+                    transform: Transform::from_translation(Vec3::new(offset_x, 0.0, offset_z)),
+                    ..default()
+                },
+                PlayerCrowdMember,
+            ));
+        });
+    }
+}
+
 fn update_swipe_axis(
     mut swipe: ResMut<SwipeState>,
     mut touch_events: EventReader<TouchInput>,
@@ -1637,11 +1683,43 @@ fn update_input_axis(
     axis.value = value.clamp(-1.0, 1.0);
 }
 
+fn drop_player_crowd_out_of_bounds(
+    mut commands: Commands,
+    mut player_query: Query<&mut CrowdCount, With<Player>>,
+    member_query: Query<(Entity, &GlobalTransform, &Parent), With<PlayerCrowdMember>>,
+    formation_query: Query<&PlayerFormation>,
+) {
+    let track_limit = TRACK_WIDTH * 0.5;
+    let mut drops: Vec<Entity> = Vec::new();
+    let mut lost: HashMap<Entity, i32> = HashMap::new();
+
+    for (entity, transform, parent) in member_query.iter() {
+        let x = transform.translation().x;
+        if x.abs() > track_limit {
+            if let Ok(formation) = formation_query.get(parent.get()) {
+                *lost.entry(formation.owner).or_insert(0) += 1;
+                drops.push(entity);
+            }
+        }
+    }
+
+    for entity in drops {
+        commands.entity(entity).despawn_recursive();
+    }
+
+    for (owner, amount) in lost {
+        if let Ok(mut count) = player_query.get_mut(owner) {
+            count.current = (count.current - amount).max(0);
+        }
+    }
+}
+
 fn move_player(
     time: Res<Time>,
     axis: Res<InputAxis>,
     mut game_state: ResMut<GameState>,
     mut player_query: Query<(&mut Transform, &CrowdCount), With<Player>>,
+    current_level: Res<CurrentLevel>,
 ) {
     if !game_state.running {
         return;
@@ -1655,7 +1733,11 @@ fn move_player(
         }
         transform.translation.z += PLAYER_SPEED * time.delta_seconds();
         transform.translation.x += -axis.value * LATERAL_SPEED * time.delta_seconds();
-        let limit = TRACK_WIDTH * 0.5 - PLAYER_MARGIN;
+        let limit = if current_level.index == 0 {
+            TRACK_WIDTH * 0.5 - PLAYER_HALF_WIDTH
+        } else {
+            TRACK_WIDTH * 0.5 - PLAYER_MARGIN
+        };
         transform.translation.x = transform.translation.x.clamp(-limit, limit);
     }
 }
@@ -1674,6 +1756,7 @@ fn handle_collisions(
         &EnemyGroup,
         Option<&Boss>,
     )>,
+    current_level: Res<CurrentLevel>,
 ) {
     if !game_state.running {
         return;
@@ -1704,9 +1787,16 @@ fn handle_collisions(
     }
 
     for (entity, transform, obstacle) in obstacle_query.iter_mut() {
-        if (player_pos.z - transform.translation.z).abs() < COLLISION_RANGE
-            && (player_pos.x - transform.translation.x).abs() < obstacle.width * 0.5
-        {
+        let hit = if current_level.index == 0 {
+            let obstacle_half_depth = 0.3;
+            (player_pos.z - transform.translation.z).abs() < PLAYER_HALF_DEPTH + obstacle_half_depth
+                && (player_pos.x - transform.translation.x).abs()
+                    < PLAYER_HALF_WIDTH + obstacle.width * 0.5
+        } else {
+            (player_pos.z - transform.translation.z).abs() < COLLISION_RANGE
+                && (player_pos.x - transform.translation.x).abs() < obstacle.width * 0.5
+        };
+        if hit {
             crowd.current -= obstacle.damage;
             commands.entity(entity).despawn_recursive();
             break;
@@ -2102,7 +2192,7 @@ fn refresh_player_formation(
             .iter()
             .find(|child| formation_query.contains(**child))
         {
-            spawn_formation(
+            spawn_player_formation(
                 &mut commands,
                 *formation,
                 count.current,
